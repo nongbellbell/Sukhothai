@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>เปิดถอดรหัสรอยอักษรสุโขทัย - Educational AR Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            font-family: 'Kanit', sans-serif;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0d1117;
+        }
+        .thai-serif {
+            font-family: 'Sarabun', sans-serif;
+        }
+        /* Glassmorphism Classes */
+        .glass-panel {
+            background: rgba(22, 27, 34, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(217, 119, 6, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .glass-btn {
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.8), rgba(180, 83, 9, 0.9));
+            box-shadow: 0 4px 15px rgba(217, 119, 6, 0.4);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-btn:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.6);
+        }
+        .glass-btn:active {
+            transform: translateY(1px) scale(0.98);
+        }
+        /* Animations */
+        @keyframes pulseSlow {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+        .animate-pulse-slow {
+            animation: pulseSlow 3s infinite ease-in-out;
+        }
+        @keyframes stoneFloat {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(0.5deg); }
+        }
+        .stone-float {
+            animation: stoneFloat 4s infinite ease-in-out;
+        }
+        /* Hidden Camera Element */
+        #webcam {
+            display: none;
+        }
+        /* Screen shake effect */
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="text-amber-50">
+
+    <video id="webcam" playsinline></video>
+
+    <div id="game-container" class="relative w-full h-full overflow-hidden flex flex-col justify-between">
+        
+        <canvas id="gameCanvas" class="absolute top-0 left-0 w-full h-full z-0"></canvas>
+
+        <header id="hud" class="relative z-10 w-full p-2 sm:p-4 flex flex-wrap justify-between items-center glass-panel border-b border-amber-500/30 transition-all duration-300">
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <span class="text-2xl sm:text-3xl">🏺</span>
+                <div>
+                    <h1 class="font-extrabold text-sm sm:text-lg tracking-wider text-amber-300">เปิดถอดรหัสรอยอักษรสุโขทัย</h1>
+                    <div class="flex items-center space-x-2 text-[10px] sm:text-xs text-amber-200/80">
+                        <span id="hud-room" class="font-bold text-amber-400">🚪 ห้อง 1/5</span>
+                        <span>•</span>
+                        <span id="camera-status" class="text-yellow-400">🟡 AR: กำลังโหลด...</span>
+                        <span id="hand-status" class="hidden sm:inline text-gray-400">✋ ไม่พบมือ</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3 sm:space-x-6 text-xs sm:text-base mt-2 sm:mt-0">
+                <div class="flex items-center space-x-1">
+                    <span class="text-amber-400 font-bold">⭐</span>
+                    <span id="hud-score" class="font-extrabold text-white">0</span>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-cyan-400 font-bold">✨ พลังปัญญา</span>
+                    <div class="w-16 sm:w-24 bg-gray-700/80 h-3.5 rounded-full overflow-hidden p-0.5 border border-cyan-500/50">
+                        <div id="wisdom-bar" class="bg-gradient-to-r from-cyan-400 to-blue-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <span id="hud-wisdom" class="text-[10px] sm:text-xs font-bold text-cyan-300">0/5</span>
+                </div>
+                <div id="hud-combo-box" class="hidden flex items-center space-x-1 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40">
+                    <span class="text-orange-400 font-bold">🔥</span>
+                    <span id="hud-combo" class="font-bold text-orange-300 text-xs">x0</span>
+                </div>
+                <button id="btn-sound" class="p-1.5 rounded-full bg-slate-800/80 border border-amber-500/30 text-amber-300 hover:text-white" aria-label="Toggle Sound">
+                    🔊
+                </button>
+            </div>
+        </header>
+
+        <main id="ui-layer" class="relative z-20 flex-1 flex items-center justify-center p-4">
+
+            <div id="screen-start" class="text-center glass-panel p-6 sm:p-10 rounded-2xl max-w-lg w-full border border-amber-500/40 shadow-2xl stone-float">
+                <div class="text-6xl sm:text-7xl mb-4">🏺</div>
+                <h2 class="text-2xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 mb-2">
+                    เปิดถอดรหัสรอยอักษรสุโขทัย
+                </h2>
+                <p class="text-xs sm:text-sm text-amber-200/80 mb-6 tracking-wide">
+                    AR Ancient Sukhothai Letter Adventure
+                </p>
+                <div class="bg-amber-950/40 border border-amber-500/20 rounded-xl p-3 sm:p-4 mb-6 text-xs sm:text-sm text-amber-100/90 text-left thai-serif">
+                    📜 <strong class="text-amber-300 font-bold">ภารกิจนักโบราณคดีน้อย:</strong> สำรวจห้องลับโบราณสมัยสุโขทัย ใช้มือควบคุมพลังเวทผ่านกล้อง (หรือเมาส์/สัมผัส) ถอดรหัสลายสือไทยโบราณเพื่อเปิดประตูกลหินทั้ง 5 ด่าน!
+                </div>
+                <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button id="btn-start" class="glass-btn px-6 py-3 rounded-xl font-bold text-base sm:text-lg flex items-center justify-center space-x-2">
+                        <span>▶ เริ่มการผจญภัย</span>
+                    </button>
+                    <button id="btn-tutorial" class="bg-slate-800/90 hover:bg-slate-700/90 border border-amber-500/40 px-5 py-3 rounded-xl font-semibold text-sm sm:text-base flex items-center justify-center space-x-2">
+                        <span>❔ วิธีการเล่น</span>
+                    </button>
+                </div>
+                <p class="mt-4 text-[10px] text-amber-400/60">* รองรับกล้อง Webcam ท่าทางมือ หรือคลิกด้วยเมาส์/ทัชสกรีน</p>
+            </div>
+
+            <div id="screen-tutorial" class="hidden glass-panel p-6 sm:p-8 rounded-2xl max-w-xl w-full border border-amber-500/40 shadow-2xl">
+                <h2 class="text-xl sm:text-2xl font-bold text-amber-300 text-center mb-6">📜 วิธีการสำรวจและควบคุม</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-xs sm:text-sm">
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-amber-500/20 flex items-center space-x-3">
+                        <span class="text-3xl">☝️</span>
+                        <div>
+                            <p class="font-bold text-amber-300">ชี้นิ้วชี้ (Cursor)</p>
+                            <p class="text-slate-300 text-[11px]">เลื่อนตำแหน่งเป้าหมายสำรวจบนจอ</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-amber-500/20 flex items-center space-x-3">
+                        <span class="text-3xl">🤏</span>
+                        <div>
+                            <p class="font-bold text-amber-300">จีบนิ้วชี้กับโป้ง (Pinch)</p>
+                            <p class="text-slate-300 text-[11px]">คลิกเลือกแผ่นป้าย / ยืนยันคำตอบ</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-amber-500/20 flex items-center space-x-3">
+                        <span class="text-3xl">✋</span>
+                        <div>
+                            <p class="font-bold text-amber-300">แบมือ (Open Palm)</p>
+                            <p class="text-slate-300 text-[11px]">ปิดหน้าต่าง / ถอยกลับ</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-amber-500/20 flex items-center space-x-3">
+                        <span class="text-3xl">✌️</span>
+                        <div>
+                            <p class="font-bold text-amber-300">ชูสองนิ้ว (Two Fingers)</p>
+                            <p class="text-slate-300 text-[11px]">ขอคำใบ้พิเศษ (-3 คะแนน)</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-blue-950/40 p-3 rounded-lg border border-blue-500/30 text-center text-xs text-blue-200 mb-6">
+                    💡 <strong>คำแนะนำ:</strong> หากไม่มีกล้องหรือระบบมือไม่พร้อม สามารถใช้ <strong>เมาส์คลิก หรือแตะสัมผัสหน้าจอ</strong> เล่นได้ 100%
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button id="btn-tut-close" class="glass-btn px-6 py-2.5 rounded-xl font-bold text-sm">เข้าใจแล้ว เริ่มเลย ▶</button>
+                </div>
+            </div>
+
+            <div id="modal-question" class="hidden glass-panel p-5 sm:p-7 rounded-2xl max-w-md w-full border border-amber-500/50 shadow-2xl relative">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                        <span>🔍</span> ถอดรหัสลายสือไทย
+                    </span>
+                    <button id="btn-modal-hint" class="text-xs bg-amber-900/60 hover:bg-amber-800 text-amber-300 px-2.5 py-1 rounded-full border border-amber-500/40 flex items-center gap-1">
+                        <span>💡 ขอคำใบ้ (-3)</span>
+                    </button>
+                </div>
+
+                <div class="bg-gradient-to-b from-stone-900 via-stone-800 to-stone-900 border-2 border-amber-500/40 rounded-xl p-4 text-center my-3 shadow-inner relative overflow-hidden">
+                    <div class="absolute inset-0 bg-amber-500/5 backdrop-blur-[1px]"></div>
+                    <div class="relative z-10">
+                        <div id="ancient-letter-container" class="h-28 flex items-center justify-center text-amber-400">
+                            </div>
+                        <p class="text-[11px] text-amber-300/80 mt-1 font-semibold tracking-wider">ลายสือไทยสมัยสุโขทัย</p>
+                    </div>
+                </div>
+
+                <p class="text-xs sm:text-sm text-center text-slate-200 mb-3 thai-serif font-medium">
+                    ตรงกับ <strong class="text-amber-300">อักษรไทยปัจจุบัน</strong> ตัวใด?
+                </p>
+
+                <div id="choice-container" class="grid grid-cols-2 gap-2.5 sm:gap-3 mb-3">
+                    </div>
+
+                <div id="feedback-panel" class="hidden mt-3 p-3 rounded-xl border text-xs thai-serif">
+                    <div id="feedback-title" class="font-bold mb-1 flex items-center gap-1.5"></div>
+                    <div id="feedback-fact" class="text-slate-300 text-[11px]"></div>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                    <button id="btn-modal-close" class="hidden glass-btn px-5 py-2 rounded-xl text-xs font-bold">ต่อไป ▶</button>
+                </div>
+            </div>
+
+            <div id="banner-room-intro" class="hidden text-center glass-panel px-8 py-6 rounded-2xl max-w-sm border border-amber-500/50 shadow-2xl animate-bounce">
+                <span class="text-4xl mb-2 block">🚪✨</span>
+                <h3 id="room-intro-title" class="text-2xl font-extrabold text-amber-300 mb-1">ห้องลับแห่งที่ 1</h3>
+                <p id="room-intro-desc" class="text-xs text-amber-100/90 thai-serif">จงถอดรหัสรอยอักษร 5 แผ่น เพื่อเปิดประตูกลหินโบราณ</p>
+            </div>
+
+            <div id="screen-room-complete" class="hidden text-center glass-panel p-6 sm:p-8 rounded-2xl max-w-md w-full border border-amber-500/40 shadow-2xl">
+                <span class="text-5xl mb-2 block">🎉</span>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-amber-300 mb-1">ปลดล็อกประตูกลสำเร็จ!</h2>
+                <p class="text-xs text-amber-200/80 mb-4">คุณผ่านการทดสอบถอดรหัสประจำห้อง</p>
+                <div class="bg-stone-900/70 rounded-xl p-4 border border-amber-500/20 mb-6 text-xs sm:text-sm text-left space-y-2">
+                    <div class="flex justify-between"><span>⭐ คะแนนสะสม:</span><strong id="rc-score" class="text-amber-300">0</strong></div>
+                    <div class="flex justify-between"><span>✨ พลังแห่งปัญญา:</span><strong id="rc-wisdom" class="text-cyan-300">5/5</strong></div>
+                    <div class="flex justify-between"><span>🔥 Combo สูงสุด:</span><strong id="rc-combo" class="text-orange-300">0</strong></div>
+                </div>
+                <button id="btn-next-room" class="glass-btn w-full py-3 rounded-xl font-bold text-base">เข้าสู่ห้องถัดไป 🚪▶</button>
+            </div>
+
+            <div id="screen-final" class="hidden text-center glass-panel p-6 sm:p-10 rounded-2xl max-w-lg w-full border-2 border-yellow-400 shadow-2xl stone-float">
+                <span class="text-6xl mb-3 block">🏆</span>
+                <h2 class="text-2xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-amber-400 to-yellow-500 mb-1">
+                    ภารกิจสำเร็จ!
+                </h2>
+                <p class="text-xs sm:text-sm text-amber-200 mb-4 thai-serif">
+                    นักโบราณคดีน้อยได้กอบกู้มรดกแห่งอักษรไทยสุโขทัยสำเร็จอย่างสมบูรณ์
+                </p>
+
+                <div id="final-stars" class="text-3xl sm:text-4xl mb-4 text-amber-400 flex justify-center gap-2">
+                    <span>⭐</span><span>⭐</span><span>⭐</span>
+                </div>
+
+                <div class="bg-stone-900/80 rounded-xl p-4 border border-amber-500/30 mb-6 text-xs sm:text-sm text-left space-y-2.5">
+                    <div class="flex justify-between"><span>⭐ คะแนนทั้งหมด:</span><strong id="final-score" class="text-amber-300 text-lg">0</strong></div>
+                    <div class="flex justify-between"><span>✅ ถอดรหัสถูกต้อง:</span><strong class="text-green-400">25 / 25 แผ่นป้าย</strong></div>
+                    <div class="flex justify-between"><span>✨ พลังปัญญาที่สะสม:</span><strong class="text-cyan-400">25 / 25 หน่วย</strong></div>
+                    <div class="flex justify-between"><span>🏅 ฉายานักโบราณคดี:</span><strong id="final-rank" class="text-yellow-300">ปรมาจารย์ศิลาจารึก</strong></div>
+                </div>
+
+                <button id="btn-restart" class="glass-btn w-full py-3 rounded-xl font-bold text-base flex items-center justify-center space-x-2">
+                    <span>🔄 เล่นใหม่อีกครั้ง</span>
+                </button>
+            </div>
+
+        </main>
+
+        <footer class="relative z-10 w-full px-4 py-2 text-center text-[10px] sm:text-xs text-amber-300/70 bg-stone-950/60 border-t border-amber-500/20">
+            <span>💡 ใช้มือจีบนิ้ว 🤏 หรือคลิก/สัมผัสเพื่อโต้ตอบ | เปิดถอดรหัสลายสือไทยเพื่อรวบรวมพลังปัญญาให้ครบ 5/5</span>
+        </footer>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           1. CONSTANTS & GAME DATA
+           ========================================================================== */
+        const GAME_STATES = {
+            START: "start",
+            TUTORIAL: "tutorial",
+            ROOM_INTRO: "roomIntro",
+            PLAYING: "playing",
+            CHOOSING: "choosing",
+            DOOR_UNLOCK: "doorUnlock",
+            ROOM_COMPLETE: "roomComplete",
+            FINAL_TREASURE: "finalTreasure"
+        };
+
+        // 25 Questions distributed across 5 Rooms (5 Questions / Room)
+        // SVG Paths provide accurate vector representations of ancient Sukhothai characters
+        const QUESTIONS_DATA = [
+            // Room 1: พยัญชนะพื้นฐาน
+            {
+                ancientChar: "ก",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 30 75 L 30 35 C 30 20, 70 20, 70 35 L 70 75 M 30 45 Q 50 35 70 45" stroke-linecap="round"/></svg>`,
+                modern: "ก",
+                choices: ["ก", "ถ", "ภ", "ค"],
+                hint: "เป็นพยัญชนะตัวแรกสุดของภาษาไทย รูปร่างคล้ายปากนก",
+                fact: "ตัวอักษร 'ก' สมัยสุโขทัย มีหลังคาโค้งชัดเจนและยังไม่มีหัวเหมือนอักษรไทยปัจจุบัน",
+                room: 1
+            },
+            {
+                ancientChar: "ข",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 40 30 Q 30 20 45 20 Q 60 20 55 35 L 45 75 L 65 75" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "ข",
+                choices: ["ข", "ช", "ซ", "บ"],
+                hint: "พยัญชนะตัวที่สอง อยู่ในหมวดอักษรสูง",
+                fact: "ลายสือไทยสมัยพ่อขุนรามคำแหงมีการประดิษฐ์ขึ้นเพื่อให้เขียนง่ายและรวดเร็วต่อเนื่อง",
+                room: 1
+            },
+            {
+                ancientChar: "ง",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 40 25 L 55 55 L 30 75" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "ง",
+                choices: ["ง", "ว", "จ", "ร"],
+                hint: "เสียงนาสิก (ขึ้นจมูก) เส้นหางยาวลงมาด้านล่างซ้าย",
+                fact: "อักษร 'ง' โบราณมีลักษณะลากเส้นหักมุมชัดเจนเพื่อแกะสลักบนเนื้อหินได้ง่าย",
+                room: 1
+            },
+            {
+                ancientChar: "จ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 45 25 L 35 55 Q 35 75 60 75 Q 65 55 45 55" stroke-linecap="round"/></svg>`,
+                modern: "จ",
+                choices: ["จ", "ฉ", "ฐ", "ล"],
+                hint: "เป็นพยัญชนะในคำว่า 'จริงใจ' มีเส้นวนคล้ายก้นหอย",
+                fact: "ศิลาจารึกสุโขทัยหลักที่ 1 ถูกค้นพบโดยพระบาทสมเด็จพระจอมเกล้าเจ้าอยู่หัว (ร.4)",
+                room: 1
+            },
+            {
+                ancientChar: "ด",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 35 Q 50 20 65 35 L 65 75" stroke-linecap="round"/></svg>`,
+                modern: "ด",
+                choices: ["ด", "ต", "ค", "ท"],
+                hint: "อักษรกลาง ออกเสียงเหมือน 'เด็ก'",
+                fact: "ลายสือไทยยุคแรก สระจะวางเรียงอยู่ในบรรทัดเดียวกันกับพยัญชนะ",
+                room: 1
+            },
+
+            // Room 2: พยัญชนะเสียงกักและเสียดแทรก
+            {
+                ancientChar: "ต",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 30 75 L 30 40 Q 40 25 50 40 Q 60 25 70 40 L 70 75" stroke-linecap="round"/></svg>`,
+                modern: "ต",
+                choices: ["ต", "ด", "ฒ", "ท"],
+                hint: "คล้ายตัว 'ด' แต่มีรอยหยักสองลอนด้านบน",
+                fact: "รอยหยักบนตัว 'ต' มีมาตั้งแต่สมัยสุโขทัยเพื่อแยกความต่างออกจากตัว 'ด'",
+                room: 2
+            },
+            {
+                ancientChar: "น",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 35 75 L 65 75 L 65 25" stroke-linecap="round"/></svg>`,
+                modern: "น",
+                choices: ["น", "ม", "บ", "ห"],
+                hint: "พยัญชนะในคำว่า 'น้ำ' มีเส้นตั้งคู่ขนาน",
+                fact: "ตัวอักษรสุโขทัยดัดแปลงมาจากอักษรขอมโบราณและอักษรมอญโบราณ",
+                room: 2
+            },
+            {
+                ancientChar: "บ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 35 70 Q 35 75 50 75 L 65 75 L 65 25" stroke-linecap="round"/></svg>`,
+                modern: "บ",
+                choices: ["บ", "ป", "ผ", "ษ"],
+                hint: "อักษรที่มีฐานกว้าง เป็นรูปตัว U เหลี่ยม",
+                fact: "ตัว 'บ' ในอดีตเป็นรูปสี่เหลี่ยมเปิดด้านบน ไม่มีหัวกลม",
+                room: 2
+            },
+            {
+                ancientChar: "ป",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 35 L 35 70 L 60 70 L 60 15" stroke-linecap="round"/></svg>`,
+                modern: "ป",
+                choices: ["ป", "บ", "ฝ", "ฟ"],
+                hint: "คล้ายตัว 'บ' แต่มีเส้นหางชี้ขึ้นฟ้าสูงกว่า",
+                fact: "การลากหางยาวของตัว 'ป' เพื่อให้แตกต่างจากตัว 'บ' อย่างชัดเจน",
+                room: 2
+            },
+            {
+                ancientChar: "ม",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 35 60 Q 50 75 65 60 L 65 25" stroke-linecap="round"/></svg>`,
+                modern: "ม",
+                choices: ["ม", "น", "ร", "ว"],
+                hint: "พยัญชนะในคำว่า 'ม้า' มีเส้นโค้งเชื่อมโยงตรงฐาน",
+                fact: "อักษร 'ม' ได้รับการพัฒนาจนมีม้วนกลมด้านหน้าในสมัยอยุธยาตอนต้น",
+                room: 2
+            },
+
+            // Room 3: อักษรสูงและอักษรต่ำ
+            {
+                ancientChar: "ย",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 30 30 Q 45 45 30 60 L 50 60 L 65 25 L 65 75" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "ย",
+                choices: ["ย", "พ", "ฟ", "ส"],
+                hint: "มีรอยหยักด้านหน้าคล้ายหน้าฟันยักษ์",
+                fact: "ลายสือไทยประดิษฐ์ขึ้นเมื่อ พ.ศ. 1826 โดยพ่อขุนรามคำแหงมหาราช",
+                room: 3
+            },
+            {
+                ancientChar: "ร",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 50 20 L 50 80 M 35 30 L 65 20" stroke-linecap="round"/></svg>`,
+                modern: "ร",
+                choices: ["ร", "ว", "ธ", "เ"],
+                hint: "เส้นตรงเดี่ยว มีขอสับด้านบนคล้ายคันไถ",
+                fact: "อักษร 'ร' สุโขทัยมีลักษณะตรงสง่างาม คล้ายเสาหลัก",
+                room: 3
+            },
+            {
+                ancientChar: "ล",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 45 Q 35 25 50 25 Q 65 25 65 45 L 65 75" stroke-linecap="round"/></svg>`,
+                modern: "ล",
+                choices: ["ล", "ส", "อ", "ข"],
+                hint: "พยัญชนะในคำว่า 'ลิง' เส้นโค้งอ่อนช้อย",
+                fact: "เมืองสุโขทัยได้รับการขึ้นทะเบียนเป็นมรดกโลกทางวัฒนธรรมโดย UNESCO",
+                room: 3
+            },
+            {
+                ancientChar: "ว",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 50 75 L 50 45 Q 65 30 50 20 Q 35 30 50 45" stroke-linecap="round"/></svg>`,
+                modern: "ว",
+                choices: ["ว", "ร", "อ", "ง"],
+                hint: "มีวงกลมหรือหยดน้ำอยู่ด้านบนของก้านเสา",
+                fact: "สระอัว ในสมัยสุโขทัยจะใช้ตัว 'ว' ซ้อนสองตัวในการสะกด",
+                room: 3
+            },
+            {
+                ancientChar: "ส",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 45 Q 35 25 50 25 Q 65 25 65 45 L 65 75 M 65 30 L 75 18" stroke-linecap="round"/></svg>`,
+                modern: "ส",
+                choices: ["ส", "ล", "ศ", "ษ"],
+                hint: "รูปร่างเหมือน 'ล' แต่มีหางชี้เฉียงขึ้นด้านบนขวา",
+                fact: "ตัว 'ส' สุโขทัยเป็นการเติมหางสะบัดบนตัว 'ล' เพื่อให้เกิดเสียงซี่ฟัน",
+                room: 3
+            },
+
+            // Room 4: สระและพยัญชนะพิเศษ
+            {
+                ancientChar: "ห",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 35 75 L 65 25 L 65 75" stroke-linecap="round"/></svg>`,
+                modern: "ห",
+                choices: ["ห", "น", "ม", "ท"],
+                hint: "อักษรสูง มีเส้นไขว้ทแยงตัดกันตรงกลางคล้ายตัว N",
+                fact: "ตัว 'ห' โบราณมีโครงสร้างไขว้เส้นที่สมมาตรอย่างงดงาม",
+                room: 4
+            },
+            {
+                ancientChar: "อ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 35 Q 50 20 65 35 Q 65 60 45 60" stroke-linecap="round"/></svg>`,
+                modern: "อ",
+                choices: ["อ", "ฮ", "ด", "ว"],
+                hint: "พยัญชนะตัวเกือบสุดท้าย เป็นได้ทั้งพยัญชนะและรูปสระ",
+                fact: "ตัว 'อ' ทำหน้าที่เป็นเสียงกักเส้นเสียง และเป็นฐานของสระหลายรูป",
+                room: 4
+            },
+            {
+                ancientChar: "ท",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 60 25 L 40 75 L 65 75" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "ท",
+                choices: ["ท", "ธ", "ฑ", "ช"],
+                hint: "พยัญชนะในคำว่า 'ทอง' ลากเป็นเส้นซิกแซกคล้ายตัว Z",
+                fact: "ศิลาจารึกสุโขทัยใช้หินทรายแป้งและหินชนวนในการแกะสลัก",
+                room: 4
+            },
+            {
+                ancientChar: "ช",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 30 Q 45 20 55 35 L 45 75 L 65 75 M 65 50 L 78 40" stroke-linecap="round"/></svg>`,
+                modern: "ช",
+                choices: ["ช", "ซ", "ข", "จ"],
+                hint: "พยัญชนะในคำว่า 'ช้าง' คล้าย 'ข' แต่มีหางเฉียงขึ้น",
+                fact: "ในสมัยสุโขทัย ช้างถือเป็นสัตว์คู่บารมีและพาหนะสำคัญในการเดินทาง",
+                room: 4
+            },
+            {
+                ancientChar: "พ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 30 25 L 35 75 L 50 40 L 65 75 L 70 25" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "พ",
+                choices: ["พ", "ฟ", "ผ", "ย"],
+                hint: "พยัญชนะตัวแรกในพระนาม 'พ่อขุนรามคำแหง' เส้นหยักคล้าย W",
+                fact: "คำว่า 'พ่อขุน' เป็นคำนำหน้าแสดงฐานะกษัตริย์ผู้ดูแลราษฎรแบบบิดาปกครองบุตร",
+                room: 4
+            },
+
+            // Room 5: อักษรหมวดสัญลักษณ์และวรรณยุกต์
+            {
+                ancientChar: "ศ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 45 Q 35 25 50 25 Q 65 25 65 45 L 65 75 M 42 32 L 60 48" stroke-linecap="round"/></svg>`,
+                modern: "ศ",
+                choices: ["ศ", "ส", "ษ", "ค"],
+                hint: "พยัญชนะในคำว่า 'ศาลา' หรือ 'ศิลาจารึก'",
+                fact: "คำว่า 'ศิลาจารึก' หมายถึง แผ่นหินที่มีการบันทึกตัวอักษรเพื่อเป็นหลักฐานทางประวัติศาสตร์",
+                room: 5
+            },
+            {
+                ancientChar: "ษ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 35 70 L 65 70 L 65 25 M 35 45 L 55 55" stroke-linecap="round"/></svg>`,
+                modern: "ษ",
+                choices: ["ษ", "บ", "ผ", "ศ"],
+                hint: "คล้ายตัว 'บ' แต่มีไส้ขีดผ่าตรงกลาง",
+                fact: "อักษร 'ษ' มีไว้เพื่อรองรับการเขียนคำยืมจากภาษาสันสกฤต",
+                room: 5
+            },
+            {
+                ancientChar: "ถ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 75 L 35 35 Q 35 20 50 20 Q 65 20 65 35 L 65 75 M 35 45 Q 50 55 65 45" stroke-linecap="round"/></svg>`,
+                modern: "ถ",
+                choices: ["ถ", "ภ", "ก", "ด"],
+                hint: "อักษรสูงในคำว่า 'ถุง' มีท้องป่องด้านล่าง",
+                fact: "วรรณยุกต์สมัยสุโขทัยมีเพียง 2 รูป คือ เอก (ขีดตรง) และโท (กากบาท)",
+                room: 5
+            },
+            {
+                ancientChar: "ผ",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[6]"><path d="M 35 25 L 38 75 L 50 50 L 62 75 L 65 25" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                modern: "ผ",
+                choices: ["ผ", "พ", "ฝ", "ฟ"],
+                hint: "อักษรสูง หยักกลางไม่ลอยสูงเท่า 'พ'",
+                fact: "ไตรภูมิกถา เป็นวรรณกรรมชิ้นเอกสมัยสุโขทัย แต่งโดยพระมหาธรรมราชาที่ 1 (ลิไทย)",
+                room: 5
+            },
+            {
+                ancientChar: "มรดก",
+                ancientSvg: `<svg viewBox="0 0 100 100" class="w-16 h-16 stroke-current fill-none stroke-[5]"><circle cx="50" cy="50" r="35"/><path d="M 35 50 L 50 35 L 65 50 L 50 65 Z"/><circle cx="50" cy="50" r="8" fill="currentColor"/></svg>`,
+                modern: "สุโขทัย",
+                choices: ["สุโขทัย", "อยุธยา", "ธนบุรี", "ลพบุรี"],
+                hint: "ชื่ออาณาจักรแห่งแรกที่มีการประดิษฐ์ลายสือไทย แปลว่า 'รุ่งอรุณแห่งความสุข'",
+                fact: "ยินดีด้วย! คุณได้ถอดรหัสครบถ้วนและกอบกู้มรดกทางประวัติศาสตร์ของชาติสำเร็จ!",
+                room: 5
+            }
+        ];
+
+        /* ==========================================================================
+           2. AUDIO SYNTHESIZER (WEB AUDIO API - NO EXTERNAL ASSETS)
+           ========================================================================== */
+        class AudioManager {
+            constructor() {
+                this.ctx = null;
+                this.soundEnabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playTone(freq, type, duration, gainVal = 0.1) {
+                if (!this.soundEnabled) return;
+                this.init();
+                if (!this.ctx) return;
+
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch (e) {
+                    console.warn("Audio play error", e);
+                }
+            }
+
+            playHover() { this.playTone(320, 'sine', 0.08, 0.04); }
+            playClick() { this.playTone(520, 'triangle', 0.12, 0.08); }
+            
+            playCorrect() {
+                if (!this.soundEnabled) return;
+                this.init();
+                // Melodic chime
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                    setTimeout(() => this.playTone(freq, 'sine', 0.25, 0.08), i * 70);
+                });
+            }
+
+            playWrong() {
+                if (!this.soundEnabled) return;
+                this.init();
+                this.playTone(180, 'sawtooth', 0.25, 0.08);
+            }
+
+            playDoorOpen() {
+                if (!this.soundEnabled) return;
+                this.init();
+                [220, 277.18, 329.63, 440, 554.37].forEach((freq, i) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.5, 0.1), i * 100);
+                });
+            }
+
+            playVictory() {
+                if (!this.soundEnabled) return;
+                this.init();
+                const notes = [440, 554.37, 659.25, 880, 1108.73];
+                notes.forEach((f, i) => setTimeout(() => this.playTone(f, 'sine', 0.6, 0.12), i * 120));
+            }
+        }
+
+        /* ==========================================================================
+           3. PARTICLE & ANIMATION SYSTEM (HIGH PERFORMANCE CANVAS 2D)
+           ========================================================================== */
+        class ParticleSystem {
+            constructor() {
+                this.particles = [];
+                this.maxParticles = 120;
+            }
+
+            spawnDust(width, height) {
+                if (this.particles.length < this.maxParticles && Math.random() < 0.2) {
+                    this.particles.push({
+                        x: Math.random() * width,
+                        y: Math.random() * height,
+                        vx: (Math.random() - 0.5) * 0.4,
+                        vy: -Math.random() * 0.5 - 0.1,
+                        size: Math.random() * 2.5 + 1,
+                        alpha: Math.random() * 0.6 + 0.2,
+                        color: 'rgba(245, 158, 11,',
+                        life: 1,
+                        decay: Math.random() * 0.005 + 0.002
+                    });
+                }
+            }
+
+            createBurst(x, y, count = 25, color = 'rgba(251, 191, 36,') {
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 4 + 1.5;
+                    this.particles.push({
+                        x: x,
+                        y: y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        size: Math.random() * 4 + 2,
+                        alpha: 1,
+                        color: color,
+                        life: 1,
+                        decay: Math.random() * 0.02 + 0.015
+                    });
+                }
+            }
+
+            update(width, height) {
+                this.spawnDust(width, height);
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= p.decay;
+
+                    if (p.life <= 0 || p.x < 0 || p.x > width || p.y < 0 || p.y > height) {
+                        this.particles.splice(i, 1);
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                for (let i = 0; i < this.particles.length; i++) {
+                    const p = this.particles[i];
+                    ctx.fillStyle = `${p.color} ${p.alpha * p.life})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        /* ==========================================================================
+           4. STONE PLATE & DOOR SCENE GRAPH
+           ========================================================================== */
+        class StonePlate {
+            constructor(id, index, total, questionData) {
+                this.id = id;
+                this.index = index;
+                this.total = total;
+                this.questionData = questionData;
+                this.isSolved = false;
+                this.isHovered = false;
+                this.scale = 1;
+                this.glowAnim = 0;
+                this.x = 0;
+                this.y = 0;
+                this.radius = 42; // Hit radius for pinch/click
+            }
+
+            layout(canvasWidth, canvasHeight) {
+                // Circular & arc layout around the central door
+                const centerX = canvasWidth / 2;
+                const centerY = canvasHeight * 0.52;
+                const isMobile = canvasWidth < 640;
+                const radiusX = isMobile ? canvasWidth * 0.38 : canvasWidth * 0.32;
+                const radiusY = isMobile ? canvasHeight * 0.28 : canvasHeight * 0.24;
+
+                const angleStep = Math.PI / (this.total + 1);
+                const angle = Math.PI + angleStep * (this.index + 1);
+
+                this.x = centerX + Math.cos(angle) * radiusX;
+                this.y = centerY + Math.sin(angle) * radiusY;
+                this.radius = isMobile ? 36 : 46;
+            }
+
+            update(timestamp) {
+                this.glowAnim = Math.sin(timestamp * 0.003 + this.index) * 0.3 + 0.7;
+                if (this.isHovered) {
+                    this.scale += (1.12 - this.scale) * 0.2;
+                } else {
+                    this.scale += (1.0 - this.scale) * 0.2;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+
+                // Plate Shadow
+                ctx.shadowColor = this.isSolved ? 'rgba(34, 197, 94, 0.4)' : (this.isHovered ? 'rgba(245, 158, 11, 0.7)' : 'rgba(0,0,0,0.5)');
+                ctx.shadowBlur = this.isHovered ? 25 : 12;
+
+                // Ancient Tablet Body
+                const r = this.radius;
+                ctx.fillStyle = this.isSolved ? '#14532d' : (this.isHovered ? '#78350f' : '#292524');
+                ctx.strokeStyle = this.isSolved ? '#4ade80' : (this.isHovered ? '#fbbf24' : '#78716c');
+                ctx.lineWidth = this.isHovered ? 4 : 2.5;
+
+                // Tablet rounded rect shape
+                ctx.beginPath();
+                ctx.roundRect(-r, -r, r * 2, r * 2, 14);
+                ctx.fill();
+                ctx.stroke();
+
+                // Inner Engraving Border
+                ctx.strokeStyle = this.isSolved ? 'rgba(74, 222, 128, 0.3)' : 'rgba(217, 119, 6, 0.25)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect(-r + 6, -r + 6, (r - 6) * 2, (r - 6) * 2, 8);
+                ctx.stroke();
+
+                // Plate Center Icon
+                ctx.fillStyle = this.isSolved ? '#86efac' : (this.isHovered ? '#fef08a' : '#d6d3d1');
+                ctx.font = `bold ${Math.floor(r * 0.65)}px Kanit`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                if (this.isSolved) {
+                    ctx.fillText('✓', 0, 0);
+                } else {
+                    // Ancient glyph hint mark
+                    ctx.fillText(this.questionData.ancientChar, 0, 0);
+                }
+
+                // Interactive Hint when hovered
+                if (this.isHovered && !this.isSolved) {
+                    ctx.fillStyle = '#fef3c7';
+                    ctx.font = 'bold 11px Kanit';
+                    ctx.fillText('🤏 จีบนิ้วเปิด', 0, r + 18);
+                }
+
+                ctx.restore();
+            }
+
+            contains(px, py) {
+                const dx = px - this.x;
+                const dy = py - this.y;
+                return (dx * dx + dy * dy) <= (this.radius * 1.3) * (this.radius * 1.3);
+            }
+        }
+
+        class AncientDoor {
+            constructor() {
+                this.openProgress = 0; // 0 (closed) to 1 (fully open)
+                this.isOpening = false;
+                this.glow = 0;
+            }
+
+            reset() {
+                this.openProgress = 0;
+                this.isOpening = false;
+            }
+
+            triggerOpen() {
+                this.isOpening = true;
+            }
+
+            update() {
+                if (this.isOpening && this.openProgress < 1) {
+                    this.openProgress += 0.02;
+                    if (this.openProgress > 1) this.openProgress = 1;
+                }
+                this.glow = (this.glow + 0.05) % (Math.PI * 2);
+            }
+
+            draw(ctx, canvasWidth, canvasHeight, roomNumber) {
+                const centerX = canvasWidth / 2;
+                const centerY = canvasHeight * 0.52;
+                const isMobile = canvasWidth < 640;
+                const doorW = isMobile ? 140 : 200;
+                const doorH = isMobile ? 180 : 260;
+
+                ctx.save();
+                ctx.translate(centerX, centerY);
+
+                // Door Frame Glow
+                ctx.shadowColor = this.openProgress > 0 ? 'rgba(56, 189, 248, 0.8)' : 'rgba(217, 119, 6, 0.3)';
+                ctx.shadowBlur = 20 + Math.sin(this.glow) * 10;
+
+                // Outer Arch
+                ctx.fillStyle = '#1c1917';
+                ctx.strokeStyle = '#d97706';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(0, -doorH / 4, doorW / 2 + 10, Math.PI, 0);
+                ctx.lineTo(doorW / 2 + 10, doorH / 2);
+                ctx.lineTo(-doorW / 2 - 10, doorH / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Inner Portal Light (Revealed when door opens)
+                if (this.openProgress > 0) {
+                    ctx.save();
+                    const gradient = ctx.createRadialGradient(0, 0, 10, 0, 0, doorW);
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(0.3, '#38bdf8');
+                    gradient.addColorStop(0.8, '#0369a1');
+                    gradient.addColorStop(1, '#0c4a6e');
+                    ctx.fillStyle = gradient;
+                    ctx.globalAlpha = Math.min(1, this.openProgress * 1.5);
+                    ctx.fillRect(-doorW / 2, -doorH / 2, doorW, doorH);
+                    ctx.restore();
+                }
+
+                // Sliding Left & Right Stone Doors
+                const slideOffset = (doorW / 2) * this.openProgress;
+
+                // Left Door
+                ctx.fillStyle = '#292524';
+                ctx.strokeStyle = '#a8a29e';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.rect(-doorW / 2 - slideOffset, -doorH / 2, doorW / 2, doorH);
+                ctx.fill();
+                ctx.stroke();
+
+                // Right Door
+                ctx.beginPath();
+                ctx.rect(slideOffset, -doorH / 2, doorW / 2, doorH);
+                ctx.fill();
+                ctx.stroke();
+
+                // Ancient Inscription on Closed Door
+                if (this.openProgress < 0.3) {
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.font = `bold ${isMobile ? '12px' : '16px'} Kanit`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`ศิลาทวารที่ ${roomNumber}`, 0, 0);
+                    ctx.font = '10px Kanit';
+                    ctx.fillStyle = '#a8a29e';
+                    ctx.fillText('สุโขทัยธานี', 0, 20);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        /* ==========================================================================
+           5. CURSOR & INTERACTION SYSTEM
+           ========================================================================== */
+        class Cursor {
+            constructor() {
+                this.x = window.innerWidth / 2;
+                this.y = window.innerHeight / 2;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.isPinching = false;
+                this.pinchCooldown = false;
+                this.trail = [];
+            }
+
+            update() {
+                // Smooth Lerp
+                this.x += (this.targetX - this.x) * 0.35;
+                this.y += (this.targetY - this.y) * 0.35;
+
+                // Trail
+                this.trail.push({ x: this.x, y: this.y, alpha: 1.0 });
+                if (this.trail.length > 8) this.trail.shift();
+                for (let t of this.trail) t.alpha *= 0.75;
+            }
+
+            draw(ctx) {
+                // Draw Trail
+                for (let i = 0; i < this.trail.length; i++) {
+                    const t = this.trail[i];
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, (i + 1) * 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(245, 158, 11, ${t.alpha * 0.4})`;
+                    ctx.fill();
+                }
+
+                // Draw Cursor Ring
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                ctx.shadowColor = this.isPinching ? '#38bdf8' : '#f59e0b';
+                ctx.shadowBlur = this.isPinching ? 20 : 12;
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.isPinching ? 10 : 16, 0, Math.PI * 2);
+                ctx.strokeStyle = this.isPinching ? '#38bdf8' : '#fbbf24';
+                ctx.lineWidth = this.isPinching ? 4 : 2.5;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.isPinching ? 6 : 4, 0, Math.PI * 2);
+                ctx.fillStyle = this.isPinching ? '#ffffff' : '#fbbf24';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        /* ==========================================================================
+           6. MAIN GAME ENGINE
+           ========================================================================== */
+        class SukhothaiARGame {
+            constructor() {
+                // Canvas & Context
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.dpr = window.devicePixelRatio || 1;
+
+                // Managers
+                this.audio = new AudioManager();
+                this.particles = new ParticleSystem();
+                this.cursor = new Cursor();
+                this.door = new AncientDoor();
+
+                // Game State
+                this.state = GAME_STATES.START;
+                this.currentRoom = 1;
+                this.totalRooms = 5;
+                this.score = 0;
+                this.wisdom = 0; // 0 to 5 per room
+                this.combo = 0;
+                this.maxCombo = 0;
+                this.plates = [];
+                this.activePlate = null;
+                this.answeredCount = 0;
+
+                // MediaPipe & Camera State
+                this.hands = null;
+                this.camera = null;
+                this.handLandmarks = null;
+                this.isPinchActive = false;
+                this.wasPinching = false;
+                this.pinchCooldownTimer = null;
+                this.arReady = false;
+
+                // UI Elements Cache
+                this.hud = {
+                    room: document.getElementById('hud-room'),
+                    score: document.getElementById('hud-score'),
+                    wisdom: document.getElementById('hud-wisdom'),
+                    wisdomBar: document.getElementById('wisdom-bar'),
+                    combo: document.getElementById('hud-combo'),
+                    comboBox: document.getElementById('hud-combo-box'),
+                    camStatus: document.getElementById('camera-status'),
+                    handStatus: document.getElementById('hand-status')
+                };
+
+                this.screens = {
+                    start: document.getElementById('screen-start'),
+                    tutorial: document.getElementById('screen-tutorial'),
+                    questionModal: document.getElementById('modal-question'),
+                    roomIntro: document.getElementById('banner-room-intro'),
+                    roomComplete: document.getElementById('screen-room-complete'),
+                    final: document.getElementById('screen-final')
+                };
+
+                this.initDOMEvents();
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+
+                // Setup MediaPipe
+                this.setupMediaPipe();
+
+                // Start Main Loop
+                requestAnimationFrame((t) => this.gameLoop(t));
+            }
+
+            resize() {
+                this.canvas.width = window.innerWidth * this.dpr;
+                this.canvas.height = window.innerHeight * this.dpr;
+                this.ctx.scale(this.dpr, this.dpr);
+                if (this.plates.length > 0) {
+                    this.plates.forEach(p => p.layout(window.innerWidth, window.innerHeight));
+                }
+            }
+
+            /* ======================================================================
+               MediaPipe Hands & AR Tracking Integration
+               ====================================================================== */
+            setupMediaPipe() {
+                const videoElement = document.getElementById('webcam');
+
+                try {
+                    this.hands = new Hands({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                    });
+
+                    this.hands.setOptions({
+                        maxNumHands: 1,
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+
+                    // Strictly process landmarks only in onResults
+                    this.hands.onResults((results) => {
+                        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                            this.handLandmarks = results.multiHandLandmarks[0];
+                            this.hud.handStatus.textContent = "🟢 ตรวจพบมือ";
+                            this.hud.handStatus.className = "text-green-400 font-semibold";
+                            this.processHandGestures(this.handLandmarks);
+                        } else {
+                            this.handLandmarks = null;
+                            this.hud.handStatus.textContent = "✋ ไม่พบมือ";
+                            this.hud.handStatus.className = "text-gray-400";
+                        }
+                    });
+
+                    // Camera Setup
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                        this.camera = new Camera(videoElement, {
+                            onFrame: async () => {
+                                await this.hands.send({ image: videoElement });
+                            },
+                            width: 640,
+                            height: 480
+                        });
+
+                        this.camera.start().then(() => {
+                            this.arReady = true;
+                            this.hud.camStatus.textContent = "🟢 AR: พร้อมใช้งาน";
+                            this.hud.camStatus.className = "text-green-400 font-bold";
+                        }).catch((err) => {
+                            console.warn("Camera access denied/error:", err);
+                            this.fallbackToMouse("📷 ไม่พบกล้อง (ใช้เมาส์/สัมผัสได้)");
+                        });
+                    } else {
+                        this.fallbackToMouse("📷 อุปกรณ์ไม่รองรับกล้อง");
+                    }
+                } catch (e) {
+                    console.error("MediaPipe initialization error", e);
+                    this.fallbackToMouse("⚠️ AR โหลดไม่สำเร็จ (ใช้เมาส์ได้)");
+                }
+            }
+
+            fallbackToMouse(message) {
+                this.arReady = false;
+                this.hud.camStatus.textContent = message;
+                this.hud.camStatus.className = "text-amber-400";
+            }
+
+            processHandGestures(landmarks) {
+                // Landmark 8: Index Finger Tip, Landmark 4: Thumb Tip
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                const middleTip = landmarks[12];
+                const ringTip = landmarks[16];
+
+                // Mirrored coordinates for intuitive interaction
+                const screenW = window.innerWidth;
+                const screenH = window.innerHeight;
+                this.cursor.targetX = (1 - indexTip.x) * screenW;
+                this.cursor.targetY = indexTip.y * screenH;
+
+                // Pinch Calculation
+                const dx = (1 - thumbTip.x) - (1 - indexTip.x);
+                const dy = thumbTip.y - indexTip.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                const PINCH_THRESHOLD = 0.075;
+                const isPinchingNow = distance < PINCH_THRESHOLD;
+
+                // Pinch Debounce & Trigger
+                if (isPinchingNow && !this.wasPinching && !this.cursor.pinchCooldown) {
+                    this.cursor.isPinching = true;
+                    this.handlePinchClick(this.cursor.targetX, this.cursor.targetY);
+                    
+                    // Cooldown Debounce to prevent multiple triggers
+                    this.cursor.pinchCooldown = true;
+                    setTimeout(() => {
+                        this.cursor.pinchCooldown = false;
+                    }, 400);
+                } else if (!isPinchingNow) {
+                    this.cursor.isPinching = false;
+                }
+                this.wasPinching = isPinchingNow;
+
+                // Gesture: Open Palm (Check if all fingers are spread open)
+                if (indexTip.y < landmarks[6].y && middleTip.y < landmarks[10].y && ringTip.y < landmarks[14].y && distance > 0.18) {
+                    this.handleOpenPalm();
+                }
+            }
+
+            /* ======================================================================
+               Pointer / Touch / Fallback Input Handling
+               ====================================================================== */
+            initDOMEvents() {
+                // Global pointer listener for Mouse / Touch Fallback
+                window.addEventListener('pointerdown', (e) => {
+                    this.cursor.targetX = e.clientX;
+                    this.cursor.targetY = e.clientY;
+                    this.cursor.x = e.clientX;
+                    this.cursor.y = e.clientY;
+                    this.handlePinchClick(e.clientX, e.clientY);
+                });
+
+                window.addEventListener('pointermove', (e) => {
+                    if (!this.handLandmarks) {
+                        this.cursor.targetX = e.clientX;
+                        this.cursor.targetY = e.clientY;
+                    }
+                });
+
+                // Keyboard Accessibility
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') this.handleOpenPalm();
+                    if (e.key === 'h' || e.key === 'H') this.triggerHint();
+                });
+
+                // UI Buttons Binding
+                document.getElementById('btn-start').addEventListener('click', () => {
+                    this.audio.playClick();
+                    this.startRoom(1);
+                });
+
+                document.getElementById('btn-tutorial').addEventListener('click', () => {
+                    this.audio.playClick();
+                    this.showScreen('tutorial');
+                });
+
+                document.getElementById('btn-tut-close').addEventListener('click', () => {
+                    this.audio.playClick();
+                    this.startRoom(1);
+                });
+
+                document.getElementById('btn-modal-close').addEventListener('click', () => {
+                    this.audio.playClick();
+                    this.closeQuestionModal();
+                });
+
+                document.getElementById('btn-modal-hint').addEventListener('click', () => {
+                    this.triggerHint();
+                });
+
+                document.getElementById('btn-next-room').addEventListener('click', () => {
+                    this.audio.playClick();
+                    if (this.currentRoom < this.totalRooms) {
+                        this.startRoom(this.currentRoom + 1);
+                    } else {
+                        this.showFinalTreasure();
+                    }
+                });
+
+                document.getElementById('btn-restart').addEventListener('click', () => {
+                    this.audio.playClick();
+                    this.score = 0;
+                    this.combo = 0;
+                    this.startRoom(1);
+                });
+
+                document.getElementById('btn-sound').addEventListener('click', () => {
+                    this.audio.soundEnabled = !this.audio.soundEnabled;
+                    document.getElementById('btn-sound').textContent = this.audio.soundEnabled ? '🔊' : '🔇';
+                });
+            }
+
+            /* ======================================================================
+               Game Flow & State Machine
+               ====================================================================== */
+            showScreen(screenName) {
+                Object.values(this.screens).forEach(el => el.classList.add('hidden'));
+                if (screenName === 'start') this.screens.start.classList.remove('hidden');
+                if (screenName === 'tutorial') this.screens.tutorial.classList.remove('hidden');
+                if (screenName === 'roomComplete') this.screens.roomComplete.classList.remove('hidden');
+                if (screenName === 'final') this.screens.final.classList.remove('hidden');
+            }
+
+            startRoom(roomNum) {
+                this.currentRoom = roomNum;
+                this.wisdom = 0;
+                this.answeredCount = 0;
+                this.activePlate = null;
+                this.door.reset();
+                this.updateHUD();
+
+                // Filter 5 questions for the current room
+                const roomQuestions = QUESTIONS_DATA.filter(q => q.room === roomNum);
+                this.plates = roomQuestions.map((q, idx) => new StonePlate(idx, idx, roomQuestions.length, q));
+                this.plates.forEach(p => p.layout(window.innerWidth, window.innerHeight));
+
+                // Show Room Intro Banner
+                this.state = GAME_STATES.ROOM_INTRO;
+                this.showScreen(null);
+
+                const introBanner = this.screens.roomIntro;
+                document.getElementById('room-intro-title').textContent = `ห้องลับโบราณที่ ${roomNum}`;
+                introBanner.classList.remove('hidden');
+
+                this.particles.createBurst(window.innerWidth / 2, window.innerHeight / 2, 40, 'rgba(56, 189, 248,');
+
+                setTimeout(() => {
+                    introBanner.classList.add('hidden');
+                    this.state = GAME_STATES.PLAYING;
+                }, 2200);
+            }
+
+            handlePinchClick(x, y) {
+                if (this.state === GAME_STATES.PLAYING) {
+                    for (let plate of this.plates) {
+                        if (plate.contains(x, y) && !plate.isSolved) {
+                            this.audio.playClick();
+                            this.openQuestion(plate);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            handleOpenPalm() {
+                if (this.state === GAME_STATES.CHOOSING && this.screens.questionModal.classList.contains('hidden') === false) {
+                    // Only allow dismiss if answer has been correctly resolved
+                    const closeBtn = document.getElementById('btn-modal-close');
+                    if (!closeBtn.classList.contains('hidden')) {
+                        this.closeQuestionModal();
+                    }
+                }
+            }
+
+            openQuestion(plate) {
+                this.activePlate = plate;
+                this.state = GAME_STATES.CHOOSING;
+
+                const modal = this.screens.questionModal;
+                const container = document.getElementById('ancient-letter-container');
+                const choiceContainer = document.getElementById('choice-container');
+                const feedbackPanel = document.getElementById('feedback-panel');
+                const closeBtn = document.getElementById('btn-modal-close');
+
+                // Set SVG and clear feedback
+                container.innerHTML = plate.questionData.ancientSvg;
+                feedbackPanel.classList.add('hidden');
+                closeBtn.classList.add('hidden');
+
+                // Shuffle Choices
+                const choices = [...plate.questionData.choices].sort(() => Math.random() - 0.5);
+                choiceContainer.innerHTML = '';
+
+                choices.forEach(ch => {
+                    const btn = document.createElement('button');
+                    btn.className = "bg-stone-800 hover:bg-amber-600/80 border border-amber-500/40 text-amber-200 font-extrabold text-2xl py-3 rounded-xl transition-all shadow-md active:scale-95";
+                    btn.textContent = ch;
+                    btn.addEventListener('click', () => this.handleAnswer(ch, btn));
+                    choiceContainer.appendChild(btn);
+                });
+
+                modal.classList.remove('hidden');
+            }
+
+            handleAnswer(selectedLetter, buttonElement) {
+                if (!this.activePlate || this.state !== GAME_STATES.CHOOSING) return;
+
+                const q = this.activePlate.questionData;
+                const feedbackPanel = document.getElementById('feedback-panel');
+                const feedbackTitle = document.getElementById('feedback-title');
+                const feedbackFact = document.getElementById('feedback-fact');
+                const closeBtn = document.getElementById('btn-modal-close');
+
+                if (selectedLetter === q.modern) {
+                    // CORRECT
+                    this.audio.playCorrect();
+                    this.score += 5;
+                    this.wisdom += 1;
+                    this.combo += 1;
+                    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+
+                    // Bonus for 3 combo
+                    if (this.combo % 3 === 0) {
+                        this.score += 5;
+                    }
+
+                    this.activePlate.isSolved = true;
+                    this.answeredCount += 1;
+
+                    buttonElement.className = "bg-green-600 border border-green-300 text-white font-extrabold text-2xl py-3 rounded-xl";
+                    feedbackPanel.className = "mt-3 p-3 rounded-xl border border-green-500/40 bg-green-950/60 text-xs thai-serif";
+                    feedbackTitle.innerHTML = `<span class="text-green-400">✅ ถูกต้อง! +5 คะแนน +1 พลังปัญญา</span>`;
+                    feedbackFact.textContent = `🏺 เกร็ดความรู้: ${q.fact}`;
+                    feedbackPanel.classList.remove('hidden');
+                    closeBtn.classList.remove('hidden');
+
+                    this.particles.createBurst(this.cursor.x, this.cursor.y, 35, 'rgba(74, 222, 128,');
+                    this.updateHUD();
+
+                    // Check if Room Wisdom is Complete (5/5)
+                    if (this.wisdom >= 5) {
+                        setTimeout(() => {
+                            this.closeQuestionModal();
+                            this.unlockDoorSequence();
+                        }, 1600);
+                    }
+                } else {
+                    // WRONG
+                    this.audio.playWrong();
+                    this.combo = 0;
+                    this.updateHUD();
+
+                    buttonElement.className = "bg-red-800/80 border border-red-500 text-white font-extrabold text-2xl py-3 rounded-xl";
+                    feedbackPanel.className = "mt-3 p-3 rounded-xl border border-red-500/40 bg-red-950/60 text-xs thai-serif";
+                    feedbackTitle.innerHTML = `<span class="text-red-400">❌ ยังไม่ถูกต้อง ลองพิจารณาอีกครั้ง</span>`;
+                    feedbackFact.textContent = `💡 คำแนะนำ: ${q.hint}`;
+                    feedbackPanel.classList.remove('hidden');
+
+                    document.getElementById('game-container').classList.add('shake');
+                    setTimeout(() => document.getElementById('game-container').classList.remove('shake'), 500);
+                }
+            }
+
+            triggerHint() {
+                if (this.score >= 3 && this.activePlate) {
+                    this.score = Math.max(0, this.score - 3);
+                    this.updateHUD();
+                    const feedbackPanel = document.getElementById('feedback-panel');
+                    const feedbackTitle = document.getElementById('feedback-title');
+                    const feedbackFact = document.getElementById('feedback-fact');
+                    
+                    feedbackPanel.className = "mt-3 p-3 rounded-xl border border-amber-500/40 bg-amber-950/60 text-xs thai-serif";
+                    feedbackTitle.innerHTML = `<span class="text-amber-300">💡 คำใบ้พิเศษ (-3 คะแนน)</span>`;
+                    feedbackFact.textContent = this.activePlate.questionData.hint;
+                    feedbackPanel.classList.remove('hidden');
+                }
+            }
+
+            closeQuestionModal() {
+                this.screens.questionModal.classList.add('hidden');
+                this.state = GAME_STATES.PLAYING;
+                this.activePlate = null;
+            }
+
+            unlockDoorSequence() {
+                this.state = GAME_STATES.DOOR_UNLOCK;
+                this.audio.playDoorOpen();
+                this.door.triggerOpen();
+                this.particles.createBurst(window.innerWidth / 2, window.innerHeight * 0.5, 60, 'rgba(56, 189, 248,');
+
+                setTimeout(() => {
+                    this.state = GAME_STATES.ROOM_COMPLETE;
+                    document.getElementById('rc-score').textContent = this.score;
+                    document.getElementById('rc-wisdom').textContent = `${this.wisdom}/5`;
+                    document.getElementById('rc-combo').textContent = `x${this.maxCombo}`;
+                    this.showScreen('roomComplete');
+                }, 2000);
+            }
+
+            showFinalTreasure() {
+                this.state = GAME_STATES.FINAL_TREASURE;
+                this.audio.playVictory();
+                this.showScreen('final');
+
+                document.getElementById('final-score').textContent = this.score;
+                this.particles.createBurst(window.innerWidth / 2, window.innerHeight / 2, 80, 'rgba(251, 191, 36,');
+
+                // Determine Rank
+                let rank = "นักโบราณคดีฝึกหัด";
+                let stars = "⭐⭐";
+                if (this.score >= 120) {
+                    rank = "ปรมาจารย์ศิลาจารึกสุโขทัย 👑";
+                    stars = "⭐⭐⭐";
+                } else if (this.score >= 80) {
+                    rank = "ผู้เชี่ยวชาญลายสือไทย 📜";
+                    stars = "⭐⭐⭐";
+                }
+                document.getElementById('final-rank').textContent = rank;
+                document.getElementById('final-stars').innerHTML = stars.split('').map(s => `<span>${s}</span>`).join('');
+            }
+
+            updateHUD() {
+                this.hud.room.textContent = `🚪 ห้อง ${this.currentRoom}/${this.totalRooms}`;
+                this.hud.score.textContent = this.score;
+                this.hud.wisdom.textContent = `${this.wisdom}/5`;
+                this.hud.wisdomBar.style.width = `${(this.wisdom / 5) * 100}%`;
+
+                if (this.combo > 1) {
+                    this.hud.comboBox.classList.remove('hidden');
+                    this.hud.combo.textContent = `x${this.combo}`;
+                } else {
+                    this.hud.comboBox.classList.add('hidden');
+                }
+            }
+
+            /* ======================================================================
+               Main Animation Loop & Rendering Pipeline
+               ====================================================================== */
+            gameLoop(timestamp) {
+                const screenW = window.innerWidth;
+                const screenH = window.innerHeight;
+
+                // Update Phase
+                this.cursor.update();
+                this.particles.update(screenW, screenH);
+                this.door.update();
+
+                // Plate Hover Check
+                if (this.state === GAME_STATES.PLAYING) {
+                    let hoveredAny = false;
+                    for (let plate of this.plates) {
+                        const isHover = plate.contains(this.cursor.x, this.cursor.y);
+                        if (isHover && !plate.isHovered && !plate.isSolved) {
+                            this.audio.playHover();
+                        }
+                        plate.isHovered = isHover;
+                        plate.update(timestamp);
+                        if (isHover) hoveredAny = true;
+                    }
+                }
+
+                // Render Phase
+                this.ctx.clearRect(0, 0, screenW, screenH);
+
+                // 1. Draw Ancient Room Environment
+                this.drawBackground(screenW, screenH);
+
+                // 2. Draw Central Stone Door
+                this.door.draw(this.ctx, screenW, screenH, this.currentRoom);
+
+                // 3. Draw Stone Tablets
+                if (this.state === GAME_STATES.PLAYING || this.state === GAME_STATES.DOOR_UNLOCK || this.state === GAME_STATES.CHOOSING) {
+                    for (let plate of this.plates) {
+                        plate.draw(this.ctx);
+                    }
+                }
+
+                // 4. Draw Hand Skeleton (AR Overlay)
+                if (this.handLandmarks) {
+                    this.drawHandSkeleton(this.ctx, screenW, screenH);
+                }
+
+                // 5. Draw Particles
+                this.particles.draw(this.ctx);
+
+                // 6. Draw Glow Cursor
+                this.cursor.draw(this.ctx);
+
+                requestAnimationFrame((t) => this.gameLoop(t));
+            }
+
+            drawBackground(w, h) {
+                // Mystical Sukhothai Cave Gradient
+                const bgGradient = this.ctx.createRadialGradient(w / 2, h * 0.5, 50, w / 2, h * 0.5, Math.max(w, h));
+                bgGradient.addColorStop(0, '#1c1917');
+                bgGradient.addColorStop(0.5, '#0c0a09');
+                bgGradient.addColorStop(1, '#020617');
+                this.ctx.fillStyle = bgGradient;
+                this.ctx.fillRect(0, 0, w, h);
+
+                // Torch Light Ambient Glow
+                this.ctx.fillStyle = 'rgba(217, 119, 6, 0.04)';
+                this.ctx.beginPath();
+                this.ctx.arc(w * 0.2, h * 0.3, 140, 0, Math.PI * 2);
+                this.ctx.arc(w * 0.8, h * 0.3, 140, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            drawHandSkeleton(ctx, w, h) {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+                ctx.fillStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+
+                const connections = [
+                    [0,1],[1,2],[2,3],[3,4],
+                    [0,5],[5,6],[6,7],[7,8],
+                    [5,9],[9,10],[10,11],[11,12],
+                    [9,13],[13,14],[14,15],[15,16],
+                    [13,17],[17,18],[18,19],[19,20],[0,17]
+                ];
+
+                // Draw Bones
+                for (let [start, end] of connections) {
+                    const p1 = this.handLandmarks[start];
+                    const p2 = this.handLandmarks[end];
+                    ctx.beginPath();
+                    ctx.moveTo((1 - p1.x) * w, p1.y * h);
+                    ctx.lineTo((1 - p2.x) * w, p2.y * h);
+                    ctx.stroke();
+                }
+
+                // Draw Joints
+                for (let lm of this.handLandmarks) {
+                    ctx.beginPath();
+                    ctx.arc((1 - lm.x) * w, lm.y * h, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        // Initialize Game Instance on Page Load
+        window.addEventListener('DOMContentLoaded', () => {
+            window.game = new SukhothaiARGame();
+        });
+    </script>
+</body>
+</html>
